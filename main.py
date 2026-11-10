@@ -11,6 +11,7 @@
   - มีสูตรลับ 5 สูตรซ่อนอยู่ ลองผสมวัตถุดิบ 3 อย่างที่เข้ากันดู (กด R เปิดสมุดสูตร)
   - ก่อนเริ่มเลือกเจ้าของร้านได้ 4 ตัว แต่ละตัวมีความสามารถพิเศษ
   - จบวันต้องจ่ายค่าเช่าร้าน ถ้าเงินไม่พอร้านจะปิด
+  - กดปุ่ม ? หรือ H เพื่อดูวิธีเล่นและวิธีผ่านด่าน
 """
 import json
 import math
@@ -93,6 +94,27 @@ KEEPERS = [
      "นักปรุงสูตรลับ\nโบนัสสูตรลับ x2\nสมุดสูตรบอกวัตถุดิบ 1 อย่าง"),
 ]
 
+# หน้าวิธีเล่น: (ชื่อแท็บ, [(หัวข้อ, รายละเอียด), ...])
+HELP_PAGES = [
+    ("วิธีเล่น", [
+        ("เลือกเจ้าของร้าน", "แต่ละตัวมีความสามารถพิเศษต่างกัน เลือกตัวที่ถนัดได้เลย"),
+        ("อ่านคำขอของลูกค้า", "ดูแถบกลิ่น 5 แบบทางขวา หัวใจบนแถบคือกลิ่นที่ลูกค้าอยากได้"),
+        ("หยดวัตถุดิบลงขวด", "คลิกวัตถุดิบ (หรือกดเลข 1-0) จุดสีใต้ชื่อบอกว่าให้กลิ่นอะไรมากแค่ไหน"),
+        ("เติมแถบสีให้ถึงหัวใจ", "เมื่อแถบใกล้ถึงหัวใจ หัวใจจะเต้นเป็นสีชมพู ดู % ตรงกลิ่นกลางจอประกอบ"),
+        ("ส่งมอบก่อนหมดเวลา", "ใส่อย่างน้อย 3 หยดแล้วกด \"ส่งมอบ!\" ก่อนแถบความอดทนหมด"),
+        ("ปุ่มลัด", "1-0 หยด · Enter ส่งมอบ · Backspace เอาออก 1 · Esc เททิ้ง · R สมุดสูตร · H วิธีเล่น"),
+    ]),
+    ("วิธีผ่านด่าน", [
+        ("1 วัน = ลูกค้า 5 คน", "จบวันต้องจ่ายค่าเช่าร้าน ถ้าเงินติดลบร้านจะปิด (เกมจบ)"),
+        ("ค่าเช่าแพงขึ้นทุกวัน", "ดูค่าเช่าที่แถบด้านบน ต้องทำกำไรทั้งวันให้มากกว่าค่าเช่าให้ได้"),
+        ("เก็บดาวให้เยอะ", "ตรงกลิ่น 55% = 1 ดาว · 75% = 2 ดาว · 90% = 3 ดาว · 97% ขึ้นไปได้โบนัสเพอร์เฟกต์"),
+        ("สัดส่วนสำคัญกว่าจำนวน", "ใช้หยดน้อยแต่สัดส่วนถูกก็ได้ 3 ดาว ประหยัดต้นทุนวัตถุดิบ"),
+        ("ทำไวและทำต่อเนื่อง", "2 ดาวขึ้นไปได้ทิปตามเวลาที่เหลือ · 3 ดาวติดกันได้โบนัสคอมโบ"),
+        ("ตามหาสูตรลับ", "ผสม 3 วัตถุดิบตามคำใบ้ในสมุดสูตร (R) ได้เงินโบนัสเพิ่มทุกครั้ง"),
+        ("เคล็ดลับ", "ใส่วัตถุดิบของกลิ่นที่ลูกค้าอยากได้มากที่สุดก่อน แล้วค่อยเติมกลิ่นรอง"),
+    ]),
+]
+
 MAX_DROPS = 12
 CUSTOMERS_PER_DAY = 5
 RECIPE_BONUS = 25
@@ -172,6 +194,8 @@ class PerfumeGame:
         self.keeper_idx = 0
         self.state = "title"
         self.book_prev = "play"
+        self.help_prev = "title"
+        self.help_page = 0
         self.reset_game()
         self.loop()
 
@@ -389,6 +413,19 @@ class PerfumeGame:
             self.state = self.book_prev
             self.last = time.time()
 
+    def open_help(self):
+        if self.state not in ("help", "book"):
+            self.help_prev = self.state
+            self.state = "help"
+
+    def close_help(self):
+        if self.state == "help":
+            self.state = self.help_prev
+            self.last = time.time()
+
+    def set_help_page(self, page):
+        self.help_page = page % len(HELP_PAGES)
+
     def end_day(self):
         rent = self.rent(self.day)
         self.money -= rent
@@ -417,6 +454,16 @@ class PerfumeGame:
                 return
 
     def on_key(self, e):
+        is_help_key = e.keysym in ("F1", "h", "H") or e.char in ("h", "H")
+        if self.state == "help":
+            if e.keysym in ("Left", "Right", "Tab"):
+                self.set_help_page(self.help_page + (-1 if e.keysym == "Left" else 1))
+            elif e.keysym in ("Return", "KP_Enter", "space", "Escape") or is_help_key:
+                self.close_help()
+            return
+        if is_help_key and self.state != "book":
+            self.open_help()
+            return
         if self.state == "book":
             if e.keysym in ("Return", "KP_Enter", "space", "Escape") or e.char in ("r", "R"):
                 self.close_book()
@@ -901,9 +948,19 @@ class PerfumeGame:
         self.rrect(x0, 16, x1, 52, 16, fill=color, outline=LINE, width=2)
         self.text((x0 + x1) / 2, 34, label, 10, True, fg)
 
+    def help_button(self, x, y, r):
+        hov = self.state != "help" and self.hovering(x - r, y - r, x + r, y + r)
+        dy = -2 if hov else 0
+        self.c.create_oval(x - r, y - r + 3, x + r, y + r + 3, fill="#f6d5e3", outline="")
+        self.c.create_oval(x - r, y - r + dy, x + r, y + r + dy,
+                           fill="#fff6fa" if hov else "white", outline=PINK, width=2)
+        self.text(x, y + dy, "?", 12, True, "#e9679a")
+        self.hot.append((x - r, y - r, x + r, y + r + 3, self.open_help))
+
     def draw_top(self):
         self.heart(30, 34, 11, PINK)
         self.text(48, 34, "ร้านน้ำหอมมหัศจรรย์", 15, True, "#e9679a", "w")
+        self.help_button(264, 34, 15)
         n = min(self.served + 1, CUSTOMERS_PER_DAY)
         self.pill(290, 440, f"วันที่ {self.day} · ลูกค้า {n}/{CUSTOMERS_PER_DAY}")
         self.pill(448, 558, f"เงิน {self.money}฿", "#fff9e8", "#b07a00")
@@ -1045,7 +1102,8 @@ class PerfumeGame:
             self.hot.append((x0, y0, x1, y1, lambda i=i: self.pick_keeper(i)))
         name = KEEPERS[self.keeper_idx][0]
         self.button(370, 566, 630, 614, f"เปิดร้านกับ{name}!", self.start_game, PINK, size=14)
-        self.text(500, 644, "ปุ่มลูกศร ซ้าย/ขวา เลือก · Enter เริ่ม", 9, False, SOFT)
+        self.text(500, 644, "ปุ่มลูกศร ซ้าย/ขวา เลือก · Enter เริ่ม · H วิธีเล่น", 9, False, SOFT)
+        self.help_button(960, 40, 18)
 
     def draw_book(self):
         self.overlay(90, 610)
@@ -1075,6 +1133,44 @@ class PerfumeGame:
                                            fill="#f3e9ef", outline="#e6d6e0")
                         self.text(610 + j * 40, y0 + 32, "?", 11, True, "#d8c3d0")
         self.button(410, 534, 590, 576, "ปิดสมุด", self.close_book, MINT)
+
+    def draw_help(self):
+        c = self.c
+        c.create_rectangle(0, 0, W, H, fill="#fff1f7", stipple="gray50", outline="")
+        x0, y0, x1, y1 = 120, 40, 880, 650
+        self.rrect(x0, y0 + 8, x1, y1 + 8, 34, fill="#f6d5e3", outline="")
+        self.rrect(x0, y0, x1, y1, 34, fill="white", outline=PINK, width=3)
+        self.text(500, 74, "คู่มือร้านน้ำหอม", 18, True, "#e9679a")
+        self.sparkle(380, 74, 7 + 2 * math.sin(self.t * 3), GOLD)
+        self.sparkle(620, 74, 7 + 2 * math.sin(self.t * 3 + 1), GOLD)
+        # แท็บ
+        for k, (title, _) in enumerate(HELP_PAGES):
+            tx0 = 500 - 170 + k * 175
+            sel = k == self.help_page
+            hov = self.hovering(tx0, 100, tx0 + 165, 136)
+            self.rrect(tx0, 100, tx0 + 165, 136, 16,
+                       fill=PINK if sel else "#fff6fa" if hov else "#faf6f9",
+                       outline=PINK if sel or hov else LINE, width=2)
+            self.text(tx0 + 82, 118, title, 11, True, "white" if sel else TEXT)
+            self.hot.append((tx0, 100, tx0 + 165, 136, lambda k=k: self.set_help_page(k)))
+        # เนื้อหา
+        rows = HELP_PAGES[self.help_page][1]
+        step = 432 / len(rows)
+        for k, (head, body) in enumerate(rows):
+            y = 152 + k * step
+            col = NOTE_COLORS[k % len(NOTE_COLORS)]
+            self.rrect(150, y, 850, y + step - 8, 16, fill="#fffafd", outline="#f3e1ea", width=2)
+            cy = y + (step - 8) / 2
+            c.create_oval(166, cy - 15, 196, cy + 15, fill=col, outline=shade(col, 0.85), width=2)
+            self.text(181, cy, str(k + 1), 11, True, "white")
+            self.text(214, cy - 12, head, 11, True, "#e9679a", "w")
+            self.text(214, cy + 12, body, 9, False, TEXT, "w", width=620)
+        # ปุ่มล่าง
+        self.button(150, 598, 290, 636, "< ก่อนหน้า",
+                    lambda: self.set_help_page(self.help_page - 1), "#c9b6e8", size=10)
+        self.button(710, 598, 850, 636, "ถัดไป >",
+                    lambda: self.set_help_page(self.help_page + 1), "#c9b6e8", size=10)
+        self.button(410, 596, 590, 638, "เข้าใจแล้ว!", self.close_help, MINT)
 
     def open_repo(self):
         try:
@@ -1110,6 +1206,7 @@ class PerfumeGame:
         self.text(500, 570, "ทำไวได้ทิป · 3 ดาวติดกันได้คอมโบ · มีสูตรลับซ่อนอยู่ 5 สูตร",
                   10, False, TEXT)
         self.button(400, 612, 600, 660, "เปิดร้าน!", self.continue_game, PINK, size=15)
+        self.button(16, 622, 176, 664, "? วิธีเล่น (H)", self.open_help, "#c9b6e8", size=11)
 
     # ------------------------------------------------------------ วาดทั้งหมด
     def draw_particles(self):
@@ -1122,11 +1219,22 @@ class PerfumeGame:
     def draw(self):
         self.c.delete("all")
         self.hot = []
-        if self.state == "title":
+        if self.state == "help":
+            self.draw_screen(self.help_prev)
+            self.hot = []
+            self.draw_help()
+        else:
+            self.draw_screen(self.state)
+        self.draw_particles()
+        over = any(self.hovering(*h[:4]) for h in self.hot)
+        self.c.config(cursor="hand2" if over else "")
+
+    def draw_screen(self, state):
+        if state == "title":
             self.draw_title()
-        elif self.state == "select":
+        elif state == "select":
             self.draw_select()
-        elif self.state == "book":
+        elif state == "book":
             self.draw_top()
             self.draw_shelf()
             self.draw_center()
@@ -1140,15 +1248,12 @@ class PerfumeGame:
             self.draw_shelf()
             self.draw_center()
             self.draw_customer_panel()
-            if self.state == "result":
+            if state == "result":
                 self.draw_result()
-            elif self.state == "dayend":
+            elif state == "dayend":
                 self.draw_dayend()
-            elif self.state == "gameover":
+            elif state == "gameover":
                 self.draw_gameover()
-        self.draw_particles()
-        over = any(self.hovering(*h[:4]) for h in self.hot)
-        self.c.config(cursor="hand2" if over else "")
 
 
 if __name__ == "__main__":
