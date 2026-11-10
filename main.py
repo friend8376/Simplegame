@@ -18,7 +18,10 @@ import os
 import random
 import time
 import tkinter as tk
+import webbrowser
 
+DEVELOPER = "Friend"
+REPO_URL = "https://github.com/friend8376/Simplegame"
 SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "perfume_save.json")
 
 W, H = 1000, 680
@@ -1073,8 +1076,28 @@ class PerfumeGame:
                         self.text(610 + j * 40, y0 + 32, "?", 11, True, "#d8c3d0")
         self.button(410, 534, 590, 576, "ปิดสมุด", self.close_book, MINT)
 
+    def open_repo(self):
+        try:
+            webbrowser.open(REPO_URL)
+        except Exception:
+            self.say("เปิดลิงก์ไม่ได้")
+
+    def draw_credit(self):
+        x0, y0, x1, y1 = 770, 622, 984, 664
+        hov = self.hovering(x0, y0, x1, y1)
+        dy = -2 if hov else 0
+        self.rrect(x0, y0 + 3, x1, y1 + 3, 18, fill="#f6d5e3", outline="")
+        self.rrect(x0, y0 + dy, x1, y1 + dy, 18, fill="#fff6fa" if hov else "white",
+                   outline=PINK if hov else LINE, width=2)
+        self.heart(x0 + 22, (y0 + y1) / 2 + dy, 7, PINK)
+        self.text(x0 + 36, y0 + 14 + dy, f"พัฒนาโดย {DEVELOPER}", 10, True, "#e9679a", "w")
+        self.text(x0 + 36, y0 + 30 + dy, "github.com/friend8376/Simplegame", 7, False,
+                  "#e9679a" if hov else SOFT, "w")
+        self.hot.append((x0, y0, x1, y1, self.open_repo))
+
     def draw_title(self):
         self.draw_floaters()
+        self.draw_credit()
         self.text(500, 84, "ร้านน้ำหอมมหัศจรรย์", 30, True, "#e9679a")
         self.text(500, 128, "ผสมกลิ่นให้ถูกใจลูกค้า แล้วพาร้านให้รอดไปนานที่สุด", 12, False, SOFT)
         for k, idx in enumerate((0, 1, 4, 3, 5)):
