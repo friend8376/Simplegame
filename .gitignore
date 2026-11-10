@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ไฟล์บันทึกเกม (สถิติของผู้เล่นแต่ละเครื่อง)
+perfume_save.json
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code (ตั้งค่าเฉพาะเครื่อง)
+.claude/settings.local.json
