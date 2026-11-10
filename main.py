@@ -8,13 +8,18 @@
   - คลิกวัตถุดิบ (หรือกดเลข 1-9, 0) เพื่อหยดลงขวด ให้แถบสีไปถึงหัวใจ
   - กด "ส่งมอบ" (Enter) ก่อนลูกค้าหมดความอดทน
   - ได้ 3 ดาวติดกันจะเกิดคอมโบ ได้เงินเพิ่ม
-  - มีสูตรลับ 5 สูตรซ่อนอยู่ ลองผสมวัตถุดิบ 3 อย่างที่เข้ากันดู
+  - มีสูตรลับ 5 สูตรซ่อนอยู่ ลองผสมวัตถุดิบ 3 อย่างที่เข้ากันดู (กด R เปิดสมุดสูตร)
+  - ก่อนเริ่มเลือกเจ้าของร้านได้ 4 ตัว แต่ละตัวมีความสามารถพิเศษ
   - จบวันต้องจ่ายค่าเช่าร้าน ถ้าเงินไม่พอร้านจะปิด
 """
+import json
 import math
+import os
 import random
 import time
 import tkinter as tk
+
+SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "perfume_save.json")
 
 W, H = 1000, 680
 FONT = "Tahoma"
@@ -63,13 +68,26 @@ CUSTOMERS = [
     ("อาจารย์วิทย์", "ไม้หอมอุ่นๆ หวานนิดๆ เวลาอ่านหนังสือ",    [0, 0, 4, 3, 1], "#55504f", "short",   "#d8c3a5"),
 ]
 
-# สูตรลับ: ถ้าในขวดมีวัตถุดิบครบทั้งสามอย่าง จะได้โบนัส
+# สูตรลับ: ถ้าในขวดมีวัตถุดิบครบทั้งสามอย่าง จะได้โบนัส  (ชื่อ, วัตถุดิบ, คำใบ้)
 RECIPES = [
-    ("รักแรกพบ",        {"กุหลาบ", "วานิลลา", "มัสก์"}),
-    ("เช้าวันอาทิตย์",    {"มะนาว", "มินต์", "ลาเวนเดอร์"}),
-    ("ป่าหลังฝน",        {"ซีดาร์", "มินต์", "ไม้จันทน์"}),
-    ("ขนมยามบ่าย",      {"ส้มเขียวหวาน", "วานิลลา", "มะลิ"}),
-    ("ฝันดีนะ",          {"ลาเวนเดอร์", "วานิลลา", "ไม้จันทน์"}),
+    ("รักแรกพบ",        {"กุหลาบ", "วานิลลา", "มัสก์"},       "ดอกไม้สีแดง ของหวาน และความนุ่มเหมือนก้อนเมฆ"),
+    ("เช้าวันอาทิตย์",    {"มะนาว", "มินต์", "ลาเวนเดอร์"},     "เปรี้ยวสดชื่น ใบไม้เย็นๆ และดอกไม้สีม่วง"),
+    ("ป่าหลังฝน",        {"ซีดาร์", "มินต์", "ไม้จันทน์"},      "ไม้สองชนิดกับใบไม้เขียวสด"),
+    ("ขนมยามบ่าย",      {"ส้มเขียวหวาน", "วานิลลา", "มะลิ"},  "ส้มหวาน ครีมนุ่มๆ และดอกไม้สีขาว"),
+    ("ฝันดีนะ",          {"ลาเวนเดอร์", "วานิลลา", "ไม้จันทน์"}, "ดอกไม้ช่วยหลับ ของหวาน และไม้หอมอุ่นๆ"),
+]
+NAME_IDX = {ing[0]: i for i, ing in enumerate(INGREDIENTS)}
+
+# เจ้าของร้าน: ชื่อ, ชนิด, สีขน, สีผ้ากันเปื้อน, ความสามารถ, คำอธิบาย
+KEEPERS = [
+    ("โมจิ",  "กระต่าย", "#fffafc", "#ffb3cf", "patience",
+     "ใจดีชวนคุยเก่ง\nลูกค้าอดทนนานขึ้น 40%"),
+    ("เนโกะ", "แมว",    "#ffd59e", "#a8e6f0", "money",
+     "หัวการค้า\nเริ่มด้วยเงิน 180฿\nค่าเช่าร้านถูกลง 20%"),
+    ("ฮันนี่", "หมี",     "#c99b72", "#ffe08a", "tip",
+     "ยิ้มหวานเรียกทิป\nทิปและโบนัสคอมโบ x2"),
+    ("คิตสึ",  "จิ้งจอก", "#ffa66b", "#c9b6e8", "recipe",
+     "นักปรุงสูตรลับ\nโบนัสสูตรลับ x2\nสมุดสูตรบอกวัตถุดิบ 1 อย่าง"),
 ]
 
 MAX_DROPS = 12
@@ -120,6 +138,15 @@ def rent_for(day):
     return 40 + 25 * day + 3 * day * day
 
 
+def load_save():
+    try:
+        with open(SAVE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 # ---------------------------------------------------------------- เกม
 class PerfumeGame:
     def __init__(self, root):
@@ -137,17 +164,40 @@ class PerfumeGame:
         self.particles = []
         self.t = 0.0
         self.last = time.time()
-        self.best_day = 0
+        self.save = load_save()
+        self.found = {r[0] for r in RECIPES} & set(self.save.get("found", []))
+        self.keeper_idx = 0
         self.state = "title"
+        self.book_prev = "play"
         self.reset_game()
         self.loop()
 
+    # ------------------------------------------------------------ บันทึก
+    def write_save(self):
+        self.save["found"] = sorted(self.found)
+        try:
+            with open(SAVE_PATH, "w", encoding="utf-8") as f:
+                json.dump(self.save, f, ensure_ascii=False, indent=1)
+        except OSError:
+            pass
+
+    def best(self, idx=None):
+        name = KEEPERS[self.keeper_idx if idx is None else idx][0]
+        return self.save.get("best", {}).get(name, 0)
+
     # ------------------------------------------------------------ สถานะ
+    def perk(self):
+        return KEEPERS[self.keeper_idx][4]
+
+    def rent(self, day):
+        r = rent_for(day)
+        return int(r * 0.8) if self.perk() == "money" else r
+
     def reset_game(self):
         self.day = 1
-        self.money = 100
+        self.money = 180 if self.perk() == "money" else 100
         self.combo = 0
-        self.found = set()
+        self.new_record = False
         self.drops = []
         self.customer = CUSTOMERS[0]
         self.served = 0
@@ -172,7 +222,10 @@ class PerfumeGame:
     def next_customer(self):
         self.customer = self.queue[self.served]
         self.drops = []
-        self.time_max = self.time_left = max(22, 48 - 3 * self.day)
+        patience = max(22, 48 - 3 * self.day)
+        if self.perk() == "patience":
+            patience *= 1.4
+        self.time_max = self.time_left = patience
         self.enter_t = 0.0
         self.state = "play"
 
@@ -250,8 +303,9 @@ class PerfumeGame:
         price = int(self.base_price() * [0, 0.6, 1.2, 1.8][stars])
         lines.append(("ค่าน้ำหอม", price))
         total = price
+        honey = 2 if self.perk() == "tip" else 1
         if stars >= 2:
-            tip = int(20 * self.time_left / self.time_max)
+            tip = int(20 * honey * self.time_left / self.time_max)
             if tip:
                 lines.append(("ทิปทำไว", tip))
                 total += tip
@@ -261,7 +315,7 @@ class PerfumeGame:
         if stars == 3:
             self.combo += 1
             if self.combo > 1:
-                bonus = int(price * 0.1 * min(self.combo - 1, 5))
+                bonus = int(price * 0.1 * min(self.combo - 1, 5)) * honey
                 lines.append((f"คอมโบ x{self.combo}", bonus))
                 total += bonus
         else:
@@ -271,8 +325,11 @@ class PerfumeGame:
         if recipe:
             new_recipe = recipe not in self.found
             self.found.add(recipe)
-            lines.append((f"สูตรลับ \"{recipe}\"", RECIPE_BONUS))
-            total += RECIPE_BONUS
+            if new_recipe:
+                self.write_save()
+            bonus = RECIPE_BONUS * (2 if self.perk() == "recipe" else 1)
+            lines.append((f"สูตรลับ \"{recipe}\"", bonus))
+            total += bonus
         lines.append(("ต้นทุนวัตถุดิบ", -cost))
         profit = total - cost
         comment = ["ไม่ใช่กลิ่นที่อยากได้เลย...", "อืม พอใช้ได้อยู่นะ",
@@ -308,17 +365,39 @@ class PerfumeGame:
         elif self.state == "dayend":
             self.day += 1
             self.start_day()
-        elif self.state in ("title", "gameover"):
+        elif self.state == "title":
+            self.state = "select"
+        elif self.state in ("select", "gameover"):
             self.start_game()
 
+    def pick_keeper(self, idx):
+        if self.keeper_idx == idx:
+            self.start_game()
+        else:
+            self.keeper_idx = idx
+
+    def open_book(self):
+        if self.state in ("play", "dayend"):
+            self.book_prev = self.state
+            self.state = "book"
+
+    def close_book(self):
+        if self.state == "book":
+            self.state = self.book_prev
+            self.last = time.time()
+
     def end_day(self):
-        rent = rent_for(self.day)
+        rent = self.rent(self.day)
         self.money -= rent
         new = [ing[0] for ing in INGREDIENTS if ing[5] == self.day + 1]
         self.dayinfo = dict(income=self.day_income, rent=rent, new=new)
         self.drops = []
+        name = KEEPERS[self.keeper_idx][0]
+        best = self.save.setdefault("best", {})
+        self.new_record = self.day > best.get(name, 0)
+        best[name] = max(best.get(name, 0), self.day)
+        self.write_save()
         if self.money < 0:
-            self.best_day = max(self.best_day, self.day)
             self.state = "gameover"
         else:
             self.state = "dayend"
@@ -335,7 +414,21 @@ class PerfumeGame:
                 return
 
     def on_key(self, e):
-        if e.keysym in ("Return", "KP_Enter", "space"):
+        if self.state == "book":
+            if e.keysym in ("Return", "KP_Enter", "space", "Escape") or e.char in ("r", "R"):
+                self.close_book()
+            return
+        if self.state == "select":
+            if e.keysym == "Left":
+                self.keeper_idx = (self.keeper_idx - 1) % len(KEEPERS)
+            elif e.keysym == "Right":
+                self.keeper_idx = (self.keeper_idx + 1) % len(KEEPERS)
+            elif e.keysym in ("Return", "KP_Enter", "space"):
+                self.start_game()
+            return
+        if e.char in ("r", "R"):
+            self.open_book()
+        elif e.keysym in ("Return", "KP_Enter", "space"):
             if self.state == "play":
                 self.submit()
             else:
@@ -475,6 +568,62 @@ class PerfumeGame:
         self.text((x0 + x1) / 2, (y0 + y1) / 2 + dy, label, size, True, fg)
         self.hot.append((x0, y0, x1, y1 + 4, cb))
 
+    # ------------------------------------------------------------ วาดเจ้าของร้าน
+    def draw_keeper(self, x, y, s, idx, mood="smile"):
+        c = self.c
+        name, kind, fur, apron = KEEPERS[idx][:4]
+        edge = shade(fur, 0.8) if kind != "กระต่าย" else "#f0c8d8"
+        inner = "#ffc4d8"
+        # หู
+        if kind == "กระต่าย":
+            sway = math.sin(self.t * 3 + idx) * s * 0.06
+            for sx in (-1, 1):
+                ex = x + sx * s * 0.42 + sway
+                c.create_oval(ex - s * 0.24, y - s * 1.8, ex + s * 0.24, y - s * 0.45,
+                              fill=fur, outline=edge, width=2)
+                c.create_oval(ex - s * 0.11, y - s * 1.6, ex + s * 0.11, y - s * 0.7,
+                              fill=inner, outline="")
+        elif kind in ("แมว", "จิ้งจอก"):
+            big = 1.22 if kind == "จิ้งจอก" else 1.0
+            ear_in = inner if kind == "แมว" else "#7a4a3a"
+            for sx in (-1, 1):
+                c.create_polygon(x + sx * s * 0.9, y - s * 0.3, x + sx * s * 0.78 * big,
+                                 y - s * 1.2 * big, x + sx * s * 0.18, y - s * 0.78,
+                                 fill=fur, outline=edge, width=2, joinstyle="round")
+                c.create_polygon(x + sx * s * 0.72, y - s * 0.48, x + sx * s * 0.7 * big,
+                                 y - s * 0.98 * big, x + sx * s * 0.38, y - s * 0.74,
+                                 fill=ear_in, outline="")
+        else:
+            for sx in (-1, 1):
+                ex, ey = x + sx * s * 0.72, y - s * 0.7
+                c.create_oval(ex - s * 0.32, ey - s * 0.32, ex + s * 0.32, ey + s * 0.32,
+                              fill=fur, outline=edge, width=2)
+                c.create_oval(ex - s * 0.16, ey - s * 0.16, ex + s * 0.16, ey + s * 0.16,
+                              fill=inner, outline="")
+        # ตัวและผ้ากันเปื้อน
+        self.rrect(x - s * 0.85, y + s * 0.7, x + s * 0.85, y + s * 1.9, s * 0.5,
+                   fill=fur, outline=edge, width=2)
+        self.rrect(x - s * 0.55, y + s * 0.95, x + s * 0.55, y + s * 1.9, s * 0.25,
+                   fill=apron, outline=shade(apron, 0.85), width=2)
+        self.heart(x, y + s * 1.4, s * 0.14, "white")
+        # หัว
+        c.create_oval(x - s, y - s * 0.9, x + s, y + s * 0.95, fill=fur, outline=edge, width=2)
+        if kind == "จิ้งจอก":
+            c.create_polygon(x - s * 0.92, y + s * 0.15, x, y + s * 0.35, x + s * 0.92,
+                             y + s * 0.15, x + s * 0.6, y + s * 0.75, x, y + s * 0.93,
+                             x - s * 0.6, y + s * 0.75, smooth=True, fill="white", outline="")
+        elif kind == "หมี":
+            c.create_oval(x - s * 0.34, y + s * 0.12, x + s * 0.34, y + s * 0.62,
+                          fill="#f3dcc4", outline="")
+        elif kind == "แมว":
+            for sx in (-1, 1):
+                for dy in (0.18, 0.3):
+                    c.create_line(x + sx * s * 0.6, y + s * dy, x + sx * s * 0.95,
+                                  y + s * (dy - 0.04 + 0.08 * (dy > 0.2)), fill=edge, width=1.5)
+        self.face(x, y + s * 0.05, s * 0.85, mood)
+        c.create_oval(x - s * 0.07, y + s * 0.13, x + s * 0.07, y + s * 0.23,
+                      fill="#e96a9b" if kind != "หมี" else "#5a3d3d", outline="")
+
     # ------------------------------------------------------------ วาดวัตถุดิบ
     def icon(self, x, y, r, idx, mood="smile"):
         c = self.c
@@ -569,7 +718,7 @@ class PerfumeGame:
         top, bottom, hw = 262 + bob, 474 + bob, 100
         # เงาและดาวประกอบ
         c.create_oval(cx - 110, 480, cx + 110, 500, fill="#f6d5e3", outline="")
-        for k, (sx, sy) in enumerate(((348, 250), (655, 290), (370, 420), (640, 440))):
+        for k, (sx, sy) in enumerate(((350, 236), (655, 290), (380, 330), (640, 440))):
             s = 5 + 3 * math.sin(self.t * 2.5 + k * 1.7)
             self.sparkle(sx, sy, s, "#ffd9ec" if k % 2 else "#ffe9a8")
         # ฝา
@@ -641,6 +790,17 @@ class PerfumeGame:
             self.star(464 + k * 36, 128, 13, GOLD if k < st else "#f3e3ea",
                       "#e0a400" if k < st else "#e6cfda")
         self.draw_bottle()
+        # เจ้าของร้านยืนข้างขวด
+        if not self.drops:
+            kmood = "smile"
+        elif st == 3:
+            kmood = "happy"
+        elif st == 0:
+            kmood = "wow"
+        else:
+            kmood = "smile"
+        hop = abs(math.sin(self.t * 6)) * 5 if kmood == "happy" else math.sin(self.t * 2.4 + 1) * 1.5
+        self.draw_keeper(352, 428 - hop, 24, self.keeper_idx, kmood)
         self.text(500, 514, f"หยด {len(self.drops)}/{MAX_DROPS}    ต้นทุน {self.drop_cost()}฿",
                   10, True, SOFT)
         counts = {}
@@ -744,12 +904,16 @@ class PerfumeGame:
         n = min(self.served + 1, CUSTOMERS_PER_DAY)
         self.pill(290, 440, f"วันที่ {self.day} · ลูกค้า {n}/{CUSTOMERS_PER_DAY}")
         self.pill(448, 558, f"เงิน {self.money}฿", "#fff9e8", "#b07a00")
-        self.pill(566, 706, f"ค่าเช่าวันนี้ {rent_for(self.day)}฿")
+        self.pill(566, 706, f"ค่าเช่าวันนี้ {self.rent(self.day)}฿")
         if self.combo > 1:
             self.pill(714, 824, f"คอมโบ x{self.combo}", "#ffe1ec", "#e9679a")
         else:
             self.pill(714, 824, "คอมโบ -", fg=SOFT)
-        self.pill(832, 986, f"สูตรลับ {len(self.found)}/{len(RECIPES)}", "#eefaf5", "#3fa184")
+        hov = self.state == "play" and self.hovering(832, 16, 986, 52)
+        self.pill(832, 986, f"สมุดสูตรลับ {len(self.found)}/{len(RECIPES)} (R)",
+                  "#d9f5ea" if hov else "#eefaf5", "#3fa184")
+        if self.state == "play":
+            self.hot.append((832, 16, 986, 52, self.open_book))
 
     # ------------------------------------------------------------ หน้าต่างซ้อน
     def overlay(self, y0=120, y1=570):
@@ -810,23 +974,31 @@ class PerfumeGame:
             self.text(420, 427, d["new"][0], 13, True, TEXT, "w")
         else:
             self.text(500, 415, f"สูตรลับที่ค้นพบ {len(self.found)}/{len(RECIPES)}", 11, True, SOFT)
-        self.text(500, 472, f"ค่าเช่าพรุ่งนี้ {rent_for(self.day + 1)}฿", 10, False, SOFT)
-        self.button(390, 494, 610, 536, "เปิดร้านวันต่อไป", self.continue_game, MINT)
+        self.text(500, 472, f"ค่าเช่าพรุ่งนี้ {self.rent(self.day + 1)}฿", 10, False, SOFT)
+        self.button(300, 494, 480, 536, "สมุดสูตรลับ", self.open_book, "#c9b6e8")
+        self.button(500, 494, 700, 536, "เปิดร้านวันต่อไป", self.continue_game, MINT)
+        if self.new_record and self.day > 1:
+            self.text(500, 160, "สถิติใหม่!", 9, True, "#3fa184")
 
     def draw_gameover(self):
         self.overlay(150, 530)
         self.text(500, 196, "ร้านปิดกิจการ...", 20, True, "#e9679a")
-        self.face(500, 262, 44, "sad")
+        self.draw_keeper(500, 262, 26, self.keeper_idx, "sad")
         self.text(500, 326, f"เงินไม่พอจ่ายค่าเช่า {self.dayinfo['rent']}฿", 11, False, TEXT)
         self.text(500, 360, f"เปิดร้านได้ {self.day} วัน", 16, True, TEXT)
         found = ", ".join(sorted(self.found)) or "ยังไม่พบเลย"
         self.text(500, 404, f"สูตรลับที่ค้นพบ {len(self.found)}/{len(RECIPES)}: {found}",
                   10, False, SOFT, width=400)
-        self.text(500, 444, f"สถิติดีที่สุด {self.best_day} วัน", 10, True, "#b07a00")
-        self.button(400, 470, 600, 512, "เล่นอีกครั้ง", self.continue_game, PINK)
+        name = KEEPERS[self.keeper_idx][0]
+        rec = "  (สถิติใหม่!)" if self.new_record else ""
+        self.text(500, 444, f"สถิติดีที่สุดของ{name} {self.best()} วัน{rec}", 10, True, "#b07a00")
+        self.button(296, 470, 490, 512, "เปลี่ยนตัวละคร", self.go_select, "#c9b6e8")
+        self.button(510, 470, 704, 512, "เล่นอีกครั้ง", self.continue_game, PINK)
 
-    def draw_title(self):
-        c = self.c
+    def go_select(self):
+        self.state = "select"
+
+    def draw_floaters(self):
         for k in range(14):
             x = (k * 83 + 40) % W
             y = (k * 137 + self.t * 14 * (1 + k % 3)) % (H + 40) - 20
@@ -834,6 +1006,75 @@ class PerfumeGame:
                 self.heart(x, y, 7 + k % 4, "#ffd9ec")
             else:
                 self.sparkle(x, y, 7 + k % 4, "#ffe9a8")
+
+    def draw_select(self):
+        self.draw_floaters()
+        self.text(500, 62, "เลือกเจ้าของร้าน", 24, True, "#e9679a")
+        self.text(500, 100, "แต่ละคนมีความสามารถพิเศษไม่เหมือนกัน คลิกเลือก แล้วคลิกซ้ำหรือกดเริ่ม",
+                  11, False, SOFT)
+        for i, (name, kind, fur, apron, perk, desc) in enumerate(KEEPERS):
+            x0, y0 = 70 + i * 220, 136
+            x1, y1 = x0 + 200, y0 + 384
+            cx = (x0 + x1) / 2
+            sel = i == self.keeper_idx
+            hov = self.hovering(x0, y0, x1, y1)
+            dy = -8 if sel else -3 if hov else 0
+            self.rrect(x0, y0 + 6, x1, y1 + 6, 26, fill="#f6d5e3", outline="")
+            self.rrect(x0, y0 + dy, x1, y1 + dy, 26, fill="white" if sel else "#fffafd",
+                       outline=PINK if sel else LINE, width=4 if sel else 2)
+            self.c.create_oval(cx - 64, y0 + 196 + dy, cx + 64, y0 + 214 + dy,
+                               fill=shade(apron, 1.25), outline="")
+            bounce = abs(math.sin(self.t * 5)) * 8 if sel else 0
+            self.draw_keeper(cx, y0 + 124 + dy - bounce, 44, i, "happy" if sel or hov else "smile")
+            if sel:
+                for k in range(3):
+                    a = self.t * 1.5 + k * math.tau / 3
+                    self.sparkle(cx + math.cos(a) * 80, y0 + 120 + dy + math.sin(a) * 70,
+                                 6 + 2 * math.sin(self.t * 4 + k), GOLD)
+            self.text(cx, y0 + 244 + dy, name, 16, True, "#e9679a" if sel else TEXT)
+            self.text(cx, y0 + 270 + dy, kind, 10, False, SOFT)
+            self.rrect(x0 + 12, y0 + 288 + dy, x1 - 12, y0 + 350 + dy, 14,
+                       fill=shade(apron, 1.35), outline="")
+            self.text(cx, y0 + 319 + dy, desc, 9, False, TEXT, width=170)
+            best = self.best(i)
+            self.text(cx, y0 + 367 + dy, f"สถิติ {best} วัน" if best else "ยังไม่เคยเปิดร้าน",
+                      9, True, "#b07a00" if best else SOFT)
+            self.hot.append((x0, y0, x1, y1, lambda i=i: self.pick_keeper(i)))
+        name = KEEPERS[self.keeper_idx][0]
+        self.button(370, 566, 630, 614, f"เปิดร้านกับ{name}!", self.start_game, PINK, size=14)
+        self.text(500, 644, "ปุ่มลูกศร ซ้าย/ขวา เลือก · Enter เริ่ม", 9, False, SOFT)
+
+    def draw_book(self):
+        self.overlay(90, 610)
+        self.text(500, 124, "สมุดสูตรลับ", 18, True, "#3fa184")
+        self.text(500, 152, "ใส่วัตถุดิบ 3 อย่างในขวดเดียวกัน (ลูกค้าต้องให้อย่างน้อย 1 ดาว)",
+                  9, False, SOFT)
+        fox = self.perk() == "recipe"
+        for k, (name, need, hint) in enumerate(RECIPES):
+            y0 = 172 + k * 70
+            found = name in self.found
+            self.rrect(280, y0, 720, y0 + 62, 16, fill="#eefaf5" if found else "#faf6f9",
+                       outline="#bfe9d9" if found else "#eee0e8", width=2)
+            idxs = sorted(NAME_IDX[n] for n in need)
+            if found:
+                self.text(300, y0 + 20, name, 12, True, TEXT, "w")
+                self.text(300, y0 + 44, " + ".join(INGREDIENTS[i][0] for i in idxs), 9, False, SOFT, "w")
+                for j, i in enumerate(idxs):
+                    self.icon(610 + j * 40, y0 + 32, 13, i, "happy")
+            else:
+                self.text(300, y0 + 20, "? ? ?", 12, True, "#d8c3d0", "w")
+                self.text(300, y0 + 44, f"คำใบ้: {hint}", 9, False, SOFT, "w")
+                for j in range(3):
+                    if fox and j == 0:
+                        self.icon(610, y0 + 32, 13, idxs[0], "smile")
+                    else:
+                        self.c.create_oval(610 + j * 40 - 13, y0 + 19, 610 + j * 40 + 13, y0 + 45,
+                                           fill="#f3e9ef", outline="#e6d6e0")
+                        self.text(610 + j * 40, y0 + 32, "?", 11, True, "#d8c3d0")
+        self.button(410, 534, 590, 576, "ปิดสมุด", self.close_book, MINT)
+
+    def draw_title(self):
+        self.draw_floaters()
         self.text(500, 84, "ร้านน้ำหอมมหัศจรรย์", 30, True, "#e9679a")
         self.text(500, 128, "ผสมกลิ่นให้ถูกใจลูกค้า แล้วพาร้านให้รอดไปนานที่สุด", 12, False, SOFT)
         for k, idx in enumerate((0, 1, 4, 3, 5)):
@@ -860,6 +1101,17 @@ class PerfumeGame:
         self.hot = []
         if self.state == "title":
             self.draw_title()
+        elif self.state == "select":
+            self.draw_select()
+        elif self.state == "book":
+            self.draw_top()
+            self.draw_shelf()
+            self.draw_center()
+            self.draw_customer_panel()
+            if self.book_prev == "dayend":
+                self.draw_dayend()
+            self.hot = []
+            self.draw_book()
         else:
             self.draw_top()
             self.draw_shelf()
